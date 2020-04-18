@@ -1,6 +1,8 @@
 # RQRCode
 
-![](https://github.com/whomwah/rqrcode/workflows/rqrcode/badge.svg)
+Sorry Japanese language only!
+
+[takeuchi-c-flat/rqrcode](https://github.com/takeuchi-c-flat/rqrcode) この ForkedRepository は、日本の医療業界で使われている院外処方箋などの連結QRCODEの、Ruby環境からの出力をサポートする為に機能拡張を行っています。
 
 
 [RQRCode](https://github.com/whomwah/rqrcode) is a library for creating and rendering QR codes into various formats. It has a simple interface with all the standard QR code options. It was adapted from the Javascript library by Kazuhiko Arase.
@@ -14,178 +16,76 @@
 Add this line to your application's `Gemfile`:
 
 ```ruby
-gem 'rqrcode'
-```
-
-or install manually:
-
-```ruby
-gem install rqrcode
+gem 'rqrcode_core', :git => 'git://github.com/takeuchi-c-flat/rqrcode_core.git'
+gem 'rqrcode', :git => 'git://github.com/takeuchi-c-flat/rqrcode.git'
 ```
 
 ## Basic usage example
 
+ここでは、日本の医療業界で使われる院外処方箋に印刷する連結QRCODEを出力するサンプルを示します。
+
+QRCODEに収めるデータは以下のような形式になります。
+  * データ形式 : CSV
+  * 文字コード : ShiftJIS
+  * 改行 : CR(0x0D) + LF(0x0A)
+  * 末尾にEOF(0x1A)を付加
+  * CSVファイルを丸ごとバイナリ形式でQRCODEで表現するイメージです。
+
 ```ruby
 require 'rqrcode'
 
-qr = RQRCode::QRCode.new('http://github.com')
-result = ''
+# 改行・EOFを含んだShiftJIS形式の文字列データ
+sjis_text = '...................' 
 
-qr.qrcode.modules.each do |row|
-  row.each do |col|
-    result << (col ? 'X' : 'O')
-  end
+# QRCODEを複数生成
+qrcode_list = RQRCode::ConnectedQRUtil.generate_binary_connected_qrcodes(
+  sjis_text, size: 10, level: :l, adjust_for_sjis: true)
 
-  result << "\n"
-end
-
-puts result
+# PNGファイルに変換して、filepath のListを返す。
+qrcode_list.map { |qrcode|
+  filepath = File.join('tmp/qrcode', SecureRandom.uuid)
+  qrcode.as_png(module_px_size: 2, file: filepath)
+  filepath
+}
 ```
 
 ### Advanced Options
 
-These are the various QR Code generation options provided by [rqrqcode_core](https://github.com/whomwah/rqrcode_core).
+These are the various QR Code generation options provided by [c-flat-takeuchi/rqrqcode_core](https://github.com/c-flat-takeuchi/rqrcode_core).
 
 ```
 string - the string you wish to encode
 
-size   - the size of the qrcode (default 4)
+size   - the size of the qrcode (1-40 default 4)
 
 level  - the error correction level, can be:
   * Level :l 7%  of code can be restored
   * Level :m 15% of code can be restored
   * Level :q 25% of code can be restored
   * Level :h 30% of code can be restored (default :h)
-
-mode   - the mode of the qrcode (defaults to alphanumeric or byte_8bit, depending on the input data):
-  * :number
-  * :alphanumeric
-  * :byte_8bit
-  * :kanji
 ```
 
-Example
+### More Information
 
-```
-qrcode = RQRCodeCore::QRCode.new('hello world', size: 1, level: :m, mode: :alphanumeric)
-```
+* 院外処方箋のQRCODEの規格は、関係団体によって定めた基準がありますので、そちらに準拠して下さい。
 
-## Render types
+* 本Gemで作成する分割QRCODEは、バイナリモードのみをサポートしています。
+* QRコードは最大で16個にまで分割できます。
+  * 分割QRコードの規格上の上限です。
+  * 個数を超過した場合の動作は保証されません。
+* `generate_binary_connected_qrcodes` メソッドにおける `adjust_for_sjis:` パラメタを使用すると、ShiftJISの全角文字列が2つのQRCODEに跨って格納される事がないようにします。
+  * 医療機関で使用するレーザースキャナなどは、対策をしなくとも特に問題なく読み取れると思われますが、QRコードリーダーアプリの中には文字化けを起こすものがあります。
+  * 動作確認等に影響が出ないよう、安全側に倒す事ができます。
 
-You can output your QR code in various forms. These are detailed below:
-
-### as SVG
-
-The SVG renderer will produce a stand-alone SVG as a `String`
-
-```ruby
-require 'rqrcode'
-
-qrcode = RQRCode::QRCode.new("http://github.com/")
-
-# NOTE: showing with default options specified explicitly
-svg = qrcode.as_svg(
-  offset: 0,
-  color: '000',
-  shape_rendering: 'crispEdges',
-  module_size: 6,
-  standalone: true
-)
-```
-
-![QR code with github url](./images/github-qrcode.svg)
-
-### as ANSI
-
-The ANSI renderer will produce as a string with ANSI color codes.
-
-```ruby
-require 'rqrcode'
-
-qrcode = RQRCode::QRCode.new("http://github.com/")
-
-# NOTE: showing with default options specified explicitly
-svg = qrcode.as_ansi(
-  light: "\033[47m", dark: "\033[40m",
-  fill_character: '  ',
-  quiet_zone_size: 4
-)
-```
-
-![QR code with github url](./images/ansi-screen-shot.png)
-
-### as PNG
-
-The library can produce a PNG. Result will be a `ChunkyPNG::Image` instance.
-
-```ruby
-require 'rqrcode'
-
-qrcode = RQRCode::QRCode.new("http://github.com/")
-
-# NOTE: showing with default options specified explicitly
-png = qrcode.as_png(
-  bit_depth: 1,
-  border_modules: 4,
-  color_mode: ChunkyPNG::COLOR_GRAYSCALE,
-  color: 'black',
-  file: nil,
-  fill: 'white',
-  module_px_size: 6,
-  resize_exactly_to: false,
-  resize_gte_to: false,
-  size: 120
-)
-
-IO.binwrite("/tmp/github-qrcode.png", png.to_s)
-```
-
-![QR code with github url](./images/github-qrcode.png)
-
-### On the console ( just because you can )
-
-```ruby
-require 'rqrcode'
-
-qr = RQRCode::QRCode.new('http://kyan.com', size: 4, level: :h)
-
-puts qr.to_s
-```
-
-Output:
-
-```
-xxxxxxx   x x  xxx    xxxxxxx
-x     x  xxxxx  x x   x     x
-x xxx x    x x     x  x xxx x
-x xxx x  xxx  x xxx   x xxx x
-x xxx x xxx  x  x  x  x xxx x
-... etc
-```
-
-## API Documentation
+## Original API Documentation
 
 [http://www.rubydoc.info/gems/rqrcode](http://www.rubydoc.info/gems/rqrcode)
 
-## Tests
+## Original Repository
 
-You can run the test suite using:
-
-```
-$ ./bin/setup
-$ bundle exec rspec
-```
-
-or try the lib from the console with:
-
-```
-$ ./bin/console
-```
-
-## Contributing
-* Fork the project
-* Send a pull request
-* Don't touch the .gemspec, I'll do that when I release a new version
+* [https://github.com/whomwah/rqrcode]
+* [https://github.com/whomwah/rqrcode_core]
+* Thanks for Mr.Duncan Roberson.
 
 ## Authors
 
